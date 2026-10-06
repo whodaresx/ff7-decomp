@@ -300,7 +300,7 @@ static void ChocoboDrawTrackPropRange(s32 start, s32 end) {
         if (n == 0) {
             continue;
         }
-        prop = &D_800F5078.track->nodes[n - 1];
+        prop = &D_800F5078.track->sceneryModels[n - 1];
         id = prop->model;
         gte_ldv0(prop);
         gte_rtps();
