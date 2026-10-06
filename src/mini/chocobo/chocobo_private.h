@@ -15,12 +15,35 @@ typedef struct {
     /* 0x4 */ SVECTOR verts[1];
 } ChocoboPartVerts;
 
+// The bones are the first thing in the model data, one SVECTOR-sized length each.
 typedef struct {
-    /* 0x00 */ u8 unk0[0x2];
+    /* 0x0 */ s16 length;
+    /* 0x2 */ u8 unk2;
+    /* 0x3 */ u8 unk3;
+} ChocoboModelBone; // size:0x4
+
+typedef struct {
+    /* 0x00 */ u8 flags;
+    /* 0x01 */ u8 boneIndex; // unused here - parity with FieldModelPart
     /* 0x02 */ u8 nVerts;
-    /* 0x03 */ u8 unk3[0x15];
-    /* 0x18 */ ChocoboPartVerts* verts;
-    /* 0x1C */ u8 unk1C[0x4];
+    /* 0x03 */ u8 texCoordCount;
+    /* 0x04 */ u8 polyGT4Count;
+    /* 0x05 */ u8 polyGT3Count;
+    /* 0x06 */ u8 polyFT4Count;
+    /* 0x07 */ u8 polyFT3Count;
+    /* 0x08 */ u8 polyF3Count;
+    /* 0x09 */ u8 polyF4Count;
+    /* 0x0A */ u8 polyG3Count;
+    /* 0x0B */ u8 polyG4Count;
+    /* 0x0C */ u8 textureCount;
+    /* 0x0D */ u8 texturedPolygonCount;
+    /* 0x0E */ u16 polygonsOffset;
+    /* 0x10 */ u16 texCoordsOffset;
+    /* 0x12 */ u16 texturesOffset;
+    /* 0x14 */ u16 textureFlagsOffset;
+    /* 0x16 */ u16 packetBufferSize;
+    /* 0x18 */ ChocoboPartVerts* verts; // FieldModelPart calls this `data`
+    /* 0x1C */ u8* packets;
 } ChocoboModelPart; // size:0x20
 
 typedef struct {
@@ -109,17 +132,41 @@ typedef struct {
     /* 0xA2 */ s16 unkA2;
 } Chocobo; // size:0xA4
 
+// One edge of the track. A bare SVECTOR would be wrong: the slot after z holds a
+// real field on both edges, so this is only the three coordinates.
 typedef struct {
-    /* 0x00 */ SVECTOR p0; // one edge of the track
-    /* 0x08 */ SVECTOR p1; // the other edge of the track
-    /* 0x10 */ u8 unk10;
-    /* 0x11 */ u8 prop; // 1-based index of the ChocoboTrack prop placed on this segment, 0 for none
-    /* 0x12 */ u8 unk12[0x2];
-    /* 0x14 */ u8 r;
+    s16 x;
+    s16 y;
+    s16 z;
+} ChocoboTrackEdge; // size:0x6
+
+typedef struct {
+    /* 0x00 */ ChocoboTrackEdge p0;
+    /* 0x06 */ s16 akaoPreset;      // 1-based idx into ChocoboTrack.akaoPresets, 0 for none
+    /* 0x08 */ ChocoboTrackEdge p1;
+    /* 0x0E */ s16 nodeStep;        // passed to ChocoboSetNodeStep(); 0x80+ sets step to -1, else +1
+    /* 0x10 */ u8 cameraEvent;
+    /* 0x11 */ u8 prop; // 1-based idx scenery model on this segment, 0 for none
+    /* 0x12 */ u8 cullDistance;
+    /* 0x13 */ u8 terrainFlags; // bit 7 is the vis marker
+    /* 0x14 */ u8 r;            // bg - used when flags & 2
     /* 0x15 */ u8 g;
     /* 0x16 */ u8 b;
-    /* 0x17 */ u8 flags;
-} ChocoboTrackSegment; // size:0x18
+    /* 0x17 */ u8 flags; // bit 0: draw track triangles, bit 1: fill background with r/g/b
+} ChocoboTrackSegment;   // size:0x18
+
+// Preset AKAO commands fired when a racer crosses a segment with akaoPreset set.
+// Copied straight into AkaoCmd and passed to AkaoExec(); see func_800A6E50.
+typedef struct {
+    /* 0x0 */ u16 opcode; // AkaoOpcode, see include/akao.h
+    /* 0x2 */ u16 params[6];
+} AkaoCmdPreset; // size:0x10, only 0xE bytes used
+
+// Per-segment lookup table, indexed [segment][field] where field comes from
+// Chocobo.unk52. Read one byte at a time; see func_800A500C.
+typedef struct {
+    /* 0x0 */ u8 field[8];
+} ChocoboTrackGuide; // size:0x08
 
 typedef struct {
     /* 0x0 */ ChocoboModels* unk0;
@@ -199,19 +246,32 @@ typedef struct {
     /* 0xF */ u8 model;
 } ChocoboTrackNode; // size:0x10
 
+// The track header is the decompressed track image itself; ChocoboRaceInit casts
+// 0x80110000 straight to this, layout below is the file layout. Counts and
+// pointers confirmed against both courses (LBA 0x293 = long, 0x33E = short).
 typedef struct {
-    /* 0x00 */ s32 count;
-    /* 0x04 */ u8 unk4[0x4];
-    /* 0x08 */ ChocoboTrackSegment* segments;
-    /* 0x0C */ u8 unkC[0x18];
-    /* 0x24 */ s16 nTris;
+    /* 0x00 */ s32 count;           // number of track segments: 1181 long, 945 short
+    /* 0x04 */ s16 lastSprintPoint; // 990 long, 800 short
+    /* 0x06 */ u8 unk6[0x2];
+    /* 0x08 */ ChocoboTrackSegment* segments; // count x 0x18
+    /* 0x0C */ s32 dg4Count;
+    /* 0x10 */ void* dg4s;
+    /* 0x14 */ s32 dg3Count;
+    /* 0x18 */ void* dg3s;
+    /* 0x1C */ u16* mapPointers;
+    /* 0x20 */ u32* mapTable; // bits 0-15 geo idx, 16-23 type (0=DG3, 1=DG4), bit 31 segment marker
+    /* 0x24 */ s16 nTris;     // dome triangle count, always 414
     /* 0x26 */ u8 unk26[0x2];
-    /* 0x28 */ struct ChocoboTri* tris;
-    /* 0x2C */ u8 unk2C[0xC];
-    /* 0x38 */ ChocoboTrackEvent* events;
-    /* 0x3C */ u8 unk3C[0x4];
-    /* 0x40 */ ChocoboTrackNode* nodes;
-} ChocoboTrack;
+    /* 0x28 */ struct ChocoboTri* tris; // nTris x 0x24
+    /* 0x2C */ s32 spriteCount;
+    /* 0x30 */ void* sprites;             // spriteCount x 0x16
+    /* 0x34 */ ChocoboTrackGuide* guides; // count x 0x08
+    /* 0x38 */ ChocoboTrackEvent* events; // 19 long, 16 short; the count is not stored
+    /* 0x3C */ s16 sceneryModelCount;
+    /* 0x3E */ u8 unk3E[0x2];
+    /* 0x40 */ ChocoboTrackNode* sceneryModels; // sceneryModelCount x 0x10
+    /* 0x44 */ AkaoCmdPreset* akaoPresets;      // 21 long, 18 short; indexed by ChocoboTrackSegment.akaoPreset
+} ChocoboTrack;                                 // size:0x48
 
 typedef struct ChocoboTri {
     /* 0x00 */ SVECTOR v[3];
