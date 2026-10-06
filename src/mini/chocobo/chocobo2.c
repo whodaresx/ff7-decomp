@@ -561,12 +561,12 @@ void ChocoboSelectRacer(s32 id) {
         *c = D_800B75CC[id];
         c->unk7C = 0x7F;
         w = 0x81;
-        c->unk10 = (D_800B7500[c->unk0].p0.vx * c->unk7C + D_800B7500[c->unk0].p1.vx * w) / 256;
-        c->unk12 = (D_800B7500[c->unk0].p0.vy * c->unk7C + D_800B7500[c->unk0].p1.vy * w) / 256;
-        c->unk14 = (D_800B7500[c->unk0].p0.vz * c->unk7C + D_800B7500[c->unk0].p1.vz * w) / 256;
-        c->unk28 = (D_800B7500[c->unk2].p0.vx * c->unk7C + D_800B7500[c->unk2].p1.vx * w) / 256;
-        c->unk2A = (D_800B7500[c->unk2].p0.vy * c->unk7C + D_800B7500[c->unk2].p1.vy * w) / 256;
-        c->unk2C = (D_800B7500[c->unk2].p0.vz * c->unk7C + D_800B7500[c->unk2].p1.vz * w) / 256;
+        c->unk10 = (D_800B7500[c->unk0].p0.x * c->unk7C + D_800B7500[c->unk0].p1.x * w) / 256;
+        c->unk12 = (D_800B7500[c->unk0].p0.y * c->unk7C + D_800B7500[c->unk0].p1.y * w) / 256;
+        c->unk14 = (D_800B7500[c->unk0].p0.z * c->unk7C + D_800B7500[c->unk0].p1.z * w) / 256;
+        c->unk28 = (D_800B7500[c->unk2].p0.x * c->unk7C + D_800B7500[c->unk2].p1.x * w) / 256;
+        c->unk2A = (D_800B7500[c->unk2].p0.y * c->unk7C + D_800B7500[c->unk2].p1.y * w) / 256;
+        c->unk2C = (D_800B7500[c->unk2].p0.z * c->unk7C + D_800B7500[c->unk2].p1.z * w) / 256;
         dir.vx = c->unk28 - c->unk10;
         dir.vy = 0;
         dir.vz = c->unk2C - c->unk14;
@@ -590,12 +590,12 @@ void ChocoboSelectRacerAtSegment(s32 chocoboId, s32 speed, s32 seg) {
     c->unk0 = seg;
     c->speed = speed;
     c->unk2 = next;
-    c->unk10 = (D_800B7500[seg].p0.vx * c->unk7C + D_800B7500[seg].p1.vx * w) / 256;
-    c->unk12 = (D_800B7500[seg].p0.vy * c->unk7C + D_800B7500[seg].p1.vy * w) / 256;
-    c->unk14 = (D_800B7500[seg].p0.vz * c->unk7C + D_800B7500[seg].p1.vz * w) / 256;
-    c->unk28 = (D_800B7500[next].p0.vx * c->unk7C + D_800B7500[next].p1.vx * w) / 256;
-    c->unk2A = (D_800B7500[next].p0.vy * c->unk7C + D_800B7500[next].p1.vy * w) / 256;
-    c->unk2C = (D_800B7500[next].p0.vz * c->unk7C + D_800B7500[next].p1.vz * w) / 256;
+    c->unk10 = (D_800B7500[seg].p0.x * c->unk7C + D_800B7500[seg].p1.x * w) / 256;
+    c->unk12 = (D_800B7500[seg].p0.y * c->unk7C + D_800B7500[seg].p1.y * w) / 256;
+    c->unk14 = (D_800B7500[seg].p0.z * c->unk7C + D_800B7500[seg].p1.z * w) / 256;
+    c->unk28 = (D_800B7500[next].p0.x * c->unk7C + D_800B7500[next].p1.x * w) / 256;
+    c->unk2A = (D_800B7500[next].p0.y * c->unk7C + D_800B7500[next].p1.y * w) / 256;
+    c->unk2C = (D_800B7500[next].p0.z * c->unk7C + D_800B7500[next].p1.z * w) / 256;
     dir.vx = c->unk28 - c->unk10;
     dir.vy = 0;
     dir.vz = c->unk2C - c->unk14;
@@ -717,9 +717,9 @@ void ChocoboUpdateCamera(void) {
 
 void ChocoboSetNodeStep(s16 node) {
     if (node > 0x80) {
-        D_800F5078.track->nodes[node - 0x80].step = -1;
+        D_800F5078.track->sceneryModels[node - 0x80].step = -1;
     } else {
-        D_800F5078.track->nodes[node].step = 1;
+        D_800F5078.track->sceneryModels[node].step = 1;
     }
 }
 
