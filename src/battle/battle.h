@@ -138,6 +138,19 @@ enum CombatantStateFlags {
     COMBATANT_BACK_ROW = 0x40,
 };
 
+typedef enum {
+    BATTLE_MSG_ARG_CHAR_NAME = 0xEA,
+    BATTLE_MSG_ARG_ITEM_NAME = 0xEB,
+    BATTLE_MSG_ARG_NUMBER = 0xEC,
+    BATTLE_MSG_ARG_UNIT_NAME = 0xED,
+    BATTLE_MSG_ARG_MAGIC_NAME = 0xEE,
+    BATTLE_MSG_ARG_ENEMY_LETTER = 0xEF,
+    BATTLE_MSG_ARG_BATTLE_TEXT = 0xF0,
+    BATTLE_MSG_ARG_KERNEL_TEXT = 0xF1,
+    BATTLE_MSG_ARG_START = BATTLE_MSG_ARG_CHAR_NAME,
+    BATTLE_MSG_ARG_END = BATTLE_MSG_ARG_KERNEL_TEXT,
+} BattleMessageArgType;
+
 typedef struct {
     // condition/status bitmask; see BattleStatusFlags above for the bits
     // confirmed live here
@@ -182,8 +195,8 @@ typedef struct {
     /* 0x4D */ u8 magEvade;
     /* 0x4E */ u8 formationRow;
     /* 0x4F */ u8 unk4F;
-    /* 0x50 */ u16 unk50;
-    /* 0x52 */ u16 unk52;
+    /* 0x50 */ u16 unk50; // Stolen gil?
+    /* 0x52 */ u16 unk52; // Stolen item?
     /* 0x54 */ u16 elemImmuneExtra;
     /* 0x56 */ u8 unk56;
     /* 0x57 */ u8 unk57;
@@ -448,7 +461,7 @@ typedef struct {
     /* 0x023 */ u8 currentActionId;
     /* 0x024 */ u8 unk24;
     /* 0x025 */ u8 specialFlags;
-    /* 0x026 */ u8 unk26;
+    /* 0x026 */ u8 ready;
     /* 0x027 */ u8 deathType;
     /* 0x028 */ u8 colorR;
     /* 0x029 */ u8 colorG;
@@ -735,3 +748,5 @@ void BattleInitTurnWorkHPMP(void);
 void BattleAddAutoBattleActionByChance(s32 arg0, s32 arg1);
 void BattleInitUnitAction(s32 index);
 void BattleEnableLimitToPlayerWithSpeed(s32 index);
+s32 BattleCopyMessageWithArgs(u8* dst, const u8* src, const u16* args);
+s8* BattleGetStringPtrFromStringBuffer(s32 arg0);

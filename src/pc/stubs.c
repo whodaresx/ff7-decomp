@@ -1,6 +1,7 @@
 #include <game.h>
 #include <libcd.h>
 #include <libspu.h>
+#include "../battle/battle.h"
 
 u16 g_BattleMode;
 s16 g_isFieldLoading;
@@ -87,7 +88,7 @@ void func_801D080C(void) { NOT_IMPLEMENTED; }
 
 Gpu g_PolyPtr;
 u16 g_SaveSlotMask;
-u16 D_80062F50;
+u16 g_MenuLocationFlags;
 u8 g_KernRndTable[256];
 DRAWENV D_800706A4[2];
 DISPENV D_8007075C[2];
@@ -203,10 +204,6 @@ int SysGetMinutesFromSeconds() {
     NOT_IMPLEMENTED;
     return 0;
 }
-const char* SysKernGetString(s32 arg0, s32 arg1, s32 arg2) {
-    NOT_IMPLEMENTED;
-    return 0;
-}
 int SysMenuDrawDigitsWithLeadingZeroes() {
     NOT_IMPLEMENTED;
     return 0;
@@ -251,6 +248,21 @@ void func_801D11A8(void) { NOT_IMPLEMENTED; }
 void SysCopyBoostedStatToUnitStructure(void) { NOT_IMPLEMENTED; }
 void SysSortMagicInUnitStructure(s32 partyId) { NOT_IMPLEMENTED; }
 void BATTLE_Main(void) { NOT_IMPLEMENTED; }
+s32 BattleCopyMessageWithArgs(u8* dst, const u8* src, const u16* args) {
+    NOT_IMPLEMENTED;
+    return 0;
+}
+s8* BattleGetStringPtrFromStringBuffer(s32 arg0) {
+    NOT_IMPLEMENTED;
+    return 0;
+}
+// battle overlay globals read by main (14C70.c)
+BattleWork g_BattleWork;
+BattleSceneContext g_BattleSceneContext;
+BattleState g_BattleState;
+BattleData g_BattleData;
+s32 g_FFTextLetterOffset;
+s32 g_FFTextNumberOffset;
 
 volatile s16 g_GameState;
 volatile s16 g_PrevGameState;
@@ -332,10 +344,6 @@ u8 SysGetCommandOrder(u8 commandId) {
 }
 void SysCopyCommandToUnitStructure(u8 commandId, u8 order) { NOT_IMPLEMENTED; }
 void SysAddPairMateriaUnordered(u32 materia1, u32 materia2, u8 arg2, u8 arg3, u8 arg4) { NOT_IMPLEMENTED; }
-s32 SysSearchExistedMagic(u8 arg0) {
-    NOT_IMPLEMENTED;
-    return -1;
-}
 
 // Per-character scratch tables filled by src/main/17238.c while it parses equipped materia.
 u8 D_800694B4[16];
@@ -346,6 +354,10 @@ s16 D_800694FC[6];
 CurrentCharBattleMenuCommand D_80069508[NUM_BATTLE_COMMANDS];
 CurrentCharStats D_80069538;
 CurrentCharMagicCommand D_80069554[NUM_MAGICS];
+
+u16 D_80062F34[3];
+u8 D_80063660[0x30]; // size is the gap to g_KernelTextBuffer, not a known size
+u8 D_80069800[48];
 
 // Entry points of menu overlays that are not part of the PC build yet.
 void NAMEMENU_Main(s32 arg0) { NOT_IMPLEMENTED; }
@@ -387,7 +399,7 @@ void func_80032E6C() { NOT_IMPLEMENTED; }
 void func_80032ED0() { NOT_IMPLEMENTED; }
 void func_80033894() { NOT_IMPLEMENTED; }
 void func_80038F04() { NOT_IMPLEMENTED; }
-void func_801D0BA0() { NOT_IMPLEMENTED; }
+void ITEMMENU_Init() { NOT_IMPLEMENTED; }
 void func_801D3228() { NOT_IMPLEMENTED; }
 s32 DSCHANGE_WaitDiskLoop(s32 diskNo) { return 0; }
 s32 FetchMemCardStatus(s32 cardId) {
