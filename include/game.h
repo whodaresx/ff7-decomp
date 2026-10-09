@@ -11,6 +11,8 @@
 #ifdef PLATFORM_PSYZ
 #include <psyz.h>
 #include <psyz/log.h>
+// psyz's libetc.h has no getScratchAddr yet
+#define getScratchAddr(offset) ((u_long*)(0x1f800000 + (offset) * 4))
 #else
 #define INFOF(...) (void)0
 #endif
@@ -27,6 +29,7 @@
 #define NUM_BATTLE_COMMANDS 16
 #define NUM_MAGICS 56
 #define NUM_MAGICS_ALL (NUM_MAGICS + 40)
+#define NUM_SUMMONS 16
 #define MAX_INVENTORY_COUNT 320
 #define MAX_MATERIA_COUNT 200
 #define NUM_MENU_COLOR 12
@@ -1323,7 +1326,7 @@ extern s32 g_BattleCharIdToCharId[14];
 extern MainMenuColorLabels g_Labels;    // labels indexed by Labels enum
 extern u8 g_MenuColors[NUM_MENU_COLOR]; // 4 corners x RGB
 extern FieldModelData* g_FieldModelData;
-extern u8 D_80062D98; // battle_clearRenderList
+extern u8 D_80062D98;
 // Set while a memory-card transfer is in flight and the savemap must not be
 // touched; battle code spin-waits on it.
 extern volatile u8 g_SavemapBusy;
@@ -1450,9 +1453,10 @@ void SystemError(char c, long n);
 void SysMemCopy32(void* dst, const void* src, const s32 len);
 void SysIncSeedForRandom(void);
 s32 SysGetKernBattleTextById(s32);
-const char* SysKernGetString(s32 arg0, s32 arg1, s32 arg2);
+const char* SysKernGetString(s32 type, s32 index, s32 blockOffset);
 void SysSetEngineErrorCode(s32, ...);
-void func_8001726C(s16, u16);
+void SysGiveApToEquippedMateria(s16 partyId, u16 ap);
+void func_8001C3C4(void);
 u32 InputReadPadsRaw(); // jet passes a pad id the main exe ignores
 u32 InputReadPads(void);
 void SysMenuCreateDrawenvDispenv(DRAWENV* draw_env, DISPENV* disp_env);
