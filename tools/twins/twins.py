@@ -15,7 +15,7 @@ This is a signposting tool ONLY, not a progress report. It answers "what can I r
 and "where would work be useful?", it says plainly which overlays it could not
 examine rather than passing over them.
 
-Read-only: it never writes to src/, config/, or build/.
+Writes Nothing
 
 Offsets
 -------
@@ -584,11 +584,11 @@ def main():
         find(args.find, matched, pending)
         return
 
-    show = {args.only} if args.only else {"bodies", "shared", "deps", "coverage"}
-    if "bodies" in show:
-        report_bodies(matched, pending, args.limit)
+    show = {args.only} if args.only else {"shared", "bodies", "deps", "coverage"}
     if "shared" in show:
         report_shared_unmatched(unmatched, matched, args.limit)
+    if "bodies" in show:
+        report_bodies(matched, pending, args.limit)
     if "deps" in show:
         report_dependencies(overlays, args.limit)
     if "coverage" in show:
