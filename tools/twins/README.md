@@ -8,29 +8,27 @@ Run it from the repo root, after a build:
 python3 tools/twins/twins.py
 ```
 
-It is read-only. It never writes to `src/`, `config/`, or `build/`, so it cannot
-disturb anything that has already been matched.
+Never writes.
 
 ## What it reports
 
-Two kinds of sharing exist in this project and they are not the same thing.
+Three kinds of sharing exist in this project and they are not the same thing.
+
+**Shared work** (reported first). Unmatched functions identical to *other
+unmatched functions*. Neither side is solved, but they are the same code, so
+matching one body covers every copy. Largest category in the magic overlays,
+where nothing has been solved yet: 76 bodies cover 392 functions; one 624-
+instruction body is shared by 8 overlays and one 95-instruction body by 38.
+Sorted by payoff (size x copies) rather than size alone, because a small
+function in 38 overlays can save more work than a large one copied twice.
 
 **Duplicated function bodies.** The same function compiled into two different
 overlays. This is the copy-paste-and-go case: the solved source is almost
 directly reusable. `highway func_800B0754` and `field FieldModelCreatePktsForPart`
 are the same 727-instruction function.
 
-**Shared work.** Unmatched functions that are identical to *other unmatched
-functions*. Neither side is solved, but they are the same code, so matching one
-body covers every copy. This is the largest category in the magic overlays,
-where nothing has been solved yet and the "use a solved twin" report is
-necessarily empty. 76 such bodies cover 392 functions; one group of 624
-instructions is shared by 8 overlays, and one 95-instruction function is shared
-by 38. Sorted by payoff (size x copies) rather than size alone, because a small
-function in 38 overlays saves more work than a large one in two.
-
 **Call-level reuse.** Overlays that duplicate no code at all but call shared
-helpers defined elsewhere. Almost all 280 magic effect overlays are this shape:
+helpers defined elsewhere. Most of the 286 magic effect overlays are this shape:
 thin glue that calls `BattleEffectRegister`, `BattleGetPartPosition`,
 `BattleAkaoCommand` and friends. A byte-comparison finds nothing here, so without
 this section the tool would report the magic overlays as empty when in fact they
@@ -45,8 +43,8 @@ is the helper.
 
 ```sh
 python3 tools/twins/twins.py                    # everything
-python3 tools/twins/twins.py --only bodies      # unmatched with a solved twin
 python3 tools/twins/twins.py --only shared      # unmatched identical to each other
+python3 tools/twins/twins.py --only bodies      # unmatched with a solved twin
 python3 tools/twins/twins.py --only deps        # call-level reuse only
 python3 tools/twins/twins.py --only coverage    # what was and was not examined
 python3 tools/twins/twins.py --find FUNC        # one function's twin family
