@@ -45,13 +45,13 @@ static void BattleSetFocusedActor(s32 arg0) {
         if (D_800E7A38 == arg0) {
             return;
         }
-        for (i = 0; i < 64; i++) {
+        for (i = 0; i < LEN(g_BattleSceneContext.actionQueue); i++) {
             if (g_BattleSceneContext.actionQueue[i].priority == 6 &&
                 g_BattleSceneContext.actionQueue[i].unitID == D_800E7A38) {
                 break;
             }
         }
-        if (i == 64) {
+        if (i == LEN(g_BattleSceneContext.actionQueue)) {
             g_BattleWork.turn[D_800E7A38].unk2A++;
             BattleReqReturnReservedItems(*(s16*)&D_800E7A38);
             BattleQueueEvent(0, D_800E7A38, 0, 0);
@@ -66,7 +66,133 @@ static void func_800A23BC(s32 arg0) {
     }
 }
 
-INCLUDE_ASM("asm/us/battle/nonmatchings/battle", BattleBattleActionQueueExecute);
+// Executes the next queued action from the lowest non-empty priority tier
+// below numPriorities, restarting from tier 0 after a unit's AI script runs.
+// Returns 1 if every tier was empty.
+s32 BattleBattleActionQueueExecute(s32 numPriorities) {
+    s32 rescan;
+    s32 forceAction;
+    s32 slot;
+    s32 priority;
+    s32 i;
+    s32 j;
+
+    do {
+        rescan = 0;
+        for (priority = 0; priority < numPriorities; priority++) {
+            g_BattleSceneContext.currentQueuePriority = priority;
+            if (g_BattleSceneContext.nextOrderToExecute[priority] == g_BattleSceneContext.nextOrderToAssign[priority]) {
+                continue;
+            }
+
+            // Each tier is a FIFO: find the entry holding this tier's next order
+            // number (see BattleCopyBattleActionToBattleQueue for the enqueue side)
+            for (i = 0; i < LEN(g_BattleSceneContext.actionQueue); i++) {
+                if (g_BattleSceneContext.actionQueue[i].priority == priority &&
+                    (u8)g_BattleSceneContext.actionQueue[i].orderInPriority ==
+                        g_BattleSceneContext.nextOrderToExecute[priority]) {
+                    g_BattleSceneContext.currentAction = g_BattleSceneContext.actionQueue[i];
+                    g_BattleSceneContext.actionQueue[i].priority = 0xFF;
+                    break;
+                }
+            }
+
+            g_BattleSceneContext.nextOrderToExecute[priority]++;
+
+            if (i == LEN(g_BattleSceneContext.actionQueue)) {
+                continue;
+            }
+
+            slot = g_BattleSceneContext.currentAction.unitID;
+            if (slot == -1) {
+                break;
+            }
+
+            if (slot != 3) {
+                if (g_BattleState.combatant[slot].actorId == -1) {
+                    break;
+                }
+
+                if (priority > 0 && g_BattleState.combatant[slot].status & STATUS_DEATH) {
+                    break;
+                }
+
+                if (priority >= 5) {
+                    if ((u16)g_BattleWork.turn[slot].atbIncrement == 0) {
+                        g_BattleSceneContext.subActionSlots[slot] = g_BattleSceneContext.currentAction;
+                        break;
+                    }
+
+                    BattleSetFocusedActor(slot);
+                }
+            }
+
+            forceAction = 0;
+            if ((s8)g_BattleSceneContext.currentAction.actionType == -1) {
+                s32 attackId = 0;
+
+                if (slot >= START_ENEMY) {
+                    SceneEnemy* enemy = g_BattleWork.turn[slot].enemy;
+                    s32 status = g_BattleState.combatant[slot].status;
+                    if (status & STATUS_SILENCE) {
+                        if (!(enemy->unk9A & 1)) {
+                            forceAction = 1;
+                        }
+                    }
+                    if (status & STATUS_BERSERK) {
+                        forceAction = 1;
+                    }
+
+                    if (forceAction) {
+                        attackId = enemy->manipAttackIDs[0];
+                    }
+                }
+
+                if (g_BattleState.combatant[slot].status & STATUS_MANIPULATE) {
+                    break;
+                }
+
+                if (forceAction) {
+                    BattleAddBattleActionToBattleQueue(slot, 2, 0x20, BattleGetAttackIdInSceneByAttackId(attackId), 0);
+                } else if (g_BattleState.combatant[slot].stateFlags & 0x10) {
+                    func_800A32C0(1);
+                    BattleRunUnitScript(slot, 1, 2);
+
+                    // The main script's actions are queued at tier 2 (last argument above);
+                    // an empty tier 2 means it queued nothing
+                    if (g_BattleSceneContext.nextOrderToExecute[2] == g_BattleSceneContext.nextOrderToAssign[2]) {
+                        BattleSetFocusedActor(slot);
+                    }
+                    rescan = 1;
+                }
+            } else {
+                if (g_BattleState.setupFlags & 8) {
+                    for (j = 0; j < NUM_PARTY; j++) {
+                        BattleQueueEvent(0, j, 4, 0);
+                    }
+                }
+
+                if (slot < NUM_PARTY && g_BattleSceneContext.currentAction.priority >= 5U &&
+                    g_BattleState.combatant[slot].status & STATUS_BERSERK) {
+                    g_BattleSceneContext.currentAction.actionType = BattleGetBerserkToadAttackTypeId(slot);
+                    g_BattleSceneContext.currentAction.attackIndex = 0;
+                    g_BattleSceneContext.currentAction.targetMask = 0;
+                    BattleInvalidateQueuedMessages(slot, 6);
+                }
+
+                BattleCmdScriptDispatch(&g_BattleSceneContext.currentAction);
+            }
+
+            BattleExecFormationAIScripts();
+            break;
+        }
+    } while (rescan);
+
+    if (priority == numPriorities) {
+        BattleSetFocusedActor(-1);
+    }
+    return priority == numPriorities;
+}
 
 void BattleCmdScriptInitTbl(void) {
     s32 next;
@@ -88,7 +214,6 @@ void BattleCmdScriptInitTbl(void) {
     }
 }
 
-static void BattleAddBattleActionToBattleQueue(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s32 arg4);
 void BattleCheckAllLucky7s(void) {
     s32 i;
 
@@ -273,7 +398,7 @@ static void func_800A32C0(s32 arg0) {
         if (arg0 != 0) {
             if (g_BattleSceneContext.currentQueuePriority == 6) {
                 var_a3 = 1;
-                if (g_BattleSceneContext.activeTargetSlot != g_BattleSceneContext.cursorFocusSlot) {
+                if (g_BattleSceneContext.nextOrderToExecute[6] != g_BattleSceneContext.nextOrderToAssign[6]) {
                     var_a3 = 3;
                 }
                 BattleQueueEvent(0, 0, 7, var_a3);
@@ -393,9 +518,9 @@ static void BattleCopyBattleActionToBattleQueue(BattleActionEntry* action) {
     priorityTier = action->priority;
     for (i = 0; i < LEN(g_BattleSceneContext.actionQueue); i++) {
         if (g_BattleSceneContext.actionQueue[i].priority == 0xFF) {
-            action->orderInPriority = g_BattleSceneContext.enemySlotMap[priorityTier];
+            action->orderInPriority = g_BattleSceneContext.nextOrderToAssign[priorityTier];
             g_BattleSceneContext.actionQueue[i] = *action;
-            g_BattleSceneContext.enemySlotMap[priorityTier] += 1;
+            g_BattleSceneContext.nextOrderToAssign[priorityTier]++;
             g_BattleSceneContext.pendingActionPriority = priorityTier;
             if (action->priority >= 2) {
                 g_BattleState.combatant[action->unitID].stateFlags &= ~COMBATANT_DEFENDING;
@@ -1100,8 +1225,10 @@ extern u16 D_80082884[];
 void BattleOpcodeCycle(s32, s32, s32);
 
 // scriptType 0 is run when the battle starts (see BattleInitPartyScripts/BattleInitEnemyAI)
+// scriptType 1 is run when a unit runs its own logic under normal conditions (see BattleBattleActionQueueExecute)
 // scriptType 3 is run when a unit is KO'd (see func_800A6278)
-void BattleRunUnitScript(s32 actorId, s32 scriptType, s32 arg2) {
+// priority is the queue tier for actions the script queues: main runs at 2, KO and battle start at 0
+void BattleRunUnitScript(s32 actorId, s32 scriptType, s32 priority) {
     s32 scriptOffset = 0;
     s32 presetIdx = -1;
     s32 remapped;
@@ -1137,7 +1264,7 @@ void BattleRunUnitScript(s32 actorId, s32 scriptType, s32 arg2) {
             snapshot[i].idleActionId = g_BattleState.combatant[i].idleActionId;
             snapshot[i].hurtActionId = g_BattleState.combatant[i].hurtActionId;
         }
-        BattleInitScriptContext(actorId, arg2);
+        BattleInitScriptContext(actorId, priority);
         BattleOpcodeCycle(actorId, scriptOffset, presetIdx);
         for (i = 0; i < NUM_BATTLE_ACTOR; i++) {
             if (snapshot[i].rowFlags != g_BattleState.combatant[i].rowFlags) {
@@ -1171,7 +1298,7 @@ void BattleExecFormationAIScripts(void) {
 // arg0 is the killer, arg1 is the victim, arg2: 1 from func_800AFECC, 0 from BattleCmdScriptDispatch
 void func_800A6278(s32 arg0, s32 arg1, s32 arg2) {
     s32 var_s3;
-    u8 prevSlotMap0;
+    u8 nextAssignedOrder;
 
     var_s3 = 0;
     if (arg1 >= START_ENEMY) {
@@ -1185,7 +1312,7 @@ void func_800A6278(s32 arg0, s32 arg1, s32 arg2) {
     }
 
     if (!(g_BattleState.combatant[arg1].stateFlags & 0x2000)) {
-        prevSlotMap0 = g_BattleSceneContext.enemySlotMap[0];
+        nextAssignedOrder = g_BattleSceneContext.nextOrderToAssign[0];
         g_BattleState.combatant[arg1].stateFlags |= 0x2000;
 
         if (arg0 >= START_ENEMY) {
@@ -1200,7 +1327,8 @@ void func_800A6278(s32 arg0, s32 arg1, s32 arg2) {
 
         BattleRunUnitScript(arg1, 3, 0);
 
-        if ((g_BattleSceneContext.enemySlotMap[0] != prevSlotMap0) || (arg2 != 0)) {
+        // Queue action only if the above script queued something at tier 0 or arg2 is set
+        if ((g_BattleSceneContext.nextOrderToAssign[0] != nextAssignedOrder) || (arg2 != 0)) {
             if (!(g_BattleState.combatant[arg1].stateFlags & 0x1000)) {
                 g_BattleState.scriptOpponentNonPetrifiedMask = 1 << arg1;
                 BattleQueueOpcodeAction(arg1, 0x25, 0);
@@ -1504,7 +1632,46 @@ void BattleSetupThrowAction(void) {
     }
 }
 
-INCLUDE_ASM("asm/us/battle/nonmatchings/battle", func_800A7560);
+void BattleSetupCoinThrowAction(void) {
+    s32 cost = g_CurrentAction->relativeActionIndex * 10;
+    s32 i;
+
+    // no fixed amount chosen: cost scales with the strongest enemy's HP × the number of enemies
+    if (g_CurrentAction->relativeActionIndex == 0xFFFF) {
+        s32 highestHp = 0;
+        s32 numEnemies = 0;
+
+        for (i = START_ENEMY; i < NUM_BATTLE_ACTOR; i++) {
+            if (((g_BattleData.unk14C & 0x3F0) >> i) & 1) {
+                if (highestHp < g_BattleState.combatant[i].curHP) {
+                    highestHp = g_BattleState.combatant[i].curHP;
+                }
+                numEnemies++;
+            }
+        }
+
+        if (highestHp > 10000) {
+            highestHp = 10000;
+        }
+
+        cost = highestHp * numEnemies * 10;
+    }
+
+    if (cost > 600000) {
+        cost = 600000;
+    }
+
+    if (!(g_CurrentAction->unk90 & 0x400000)) {
+        if (Savemap.gil < cost) {
+            cost = Savemap.gil;
+        }
+        Savemap.gil -= cost;
+    }
+
+    g_CurrentAction->relativeActionIndex = cost / 10;
+    g_CurrentAction->power = cost / 10;
+    g_CurrentAction->unk98 = g_CurrentAction->relativeActionIndex;
+}
 
 void BattleResolveEnemySkillActionIndex(void) {
     g_CurrentAction->absoluteActionIndex = g_CurrentAction->relativeActionIndex + NUM_MAGICS + NUM_SUMMONS;
@@ -1569,7 +1736,6 @@ void BattlePrepareTmpForManip(void) {
 void BattleQueueIntroCamera(s32);
 void func_800A795C(void) { BattleQueueIntroCamera(g_CurrentAction->relativeActionIndex); }
 
-void func_800AF9C8();
 void BattleActionType0A(void) { func_800AF9C8(); }
 
 void BattleActionType0B(void) {
@@ -1629,8 +1795,6 @@ void BattleQueueCurrentActionEffect(void) {
 }
 
 void BattleActionType10(void) { g_CurrentAction->unkB4 = 4; }
-
-void BattleRunUnitScript(s32, s32, s32);
 
 void func_800A853C(void) {
     s32 i;
@@ -3202,8 +3366,131 @@ s32 BattleGetStatusProtectionMask(s32 arg0, s32 arg1, s32 arg2) {
     return statusProtectionMask;
 }
 
-void func_800AF9C8();
-INCLUDE_ASM("asm/us/battle/nonmatchings/battle", func_800AF9C8);
+void func_800AF9C8(void) {
+    s32 targetFlags = g_CurrentAction->targetFlags;
+    s32 validTargets = g_BattleData.unitPresentMask;
+    s32 invalidTargets;
+    s32 targetMultiple;
+    s32 i;
+
+    if (!(g_CurrentAction->unk90 & 0x01000000)) {
+        validTargets &= g_BattleData.unk14C;
+        if ((g_CurrentAction->unk6C & 0x900) != 0x900) {
+            validTargets |= g_BattleData.downedActors & ~g_BattleSceneContext.unk1E88;
+        }
+    } else {
+        validTargets |= g_BattleData.downedActors;
+    }
+
+    invalidTargets = (g_CurrentAction->allowedTargetsMask ^ validTargets) & g_CurrentAction->allowedTargetsMask;
+    if (invalidTargets != 0) {
+        for (i = 0; i < NUM_BATTLE_ACTOR; i++) {
+            if (((invalidTargets >> i) & 1) && g_BattleWork.turn[i].senseTargetMask != 0xFF) {
+                g_CurrentAction->allowedTargetsMask |= (1 << g_BattleWork.turn[i].senseTargetMask);
+            }
+        }
+    }
+
+    if (targetFlags == 0) {
+        g_CurrentAction->allowedTargetsMask = 1 << g_CurrentAction->actorId;
+    } else {
+        targetMultiple = 0;
+        if (targetFlags & TARGET_ALL_ROWS) {
+            g_CurrentAction->allowedTargetsMask = g_BattleData.unk14C & ~g_BattleData.downedActors;
+        } else {
+            s32 isConfused = 0;
+            s32 startEnemyRow = targetFlags & TARGET_START_ENEMY_ROW;
+            s32 targetTeamMask;
+            s32 targetParty;
+
+            targetParty = startEnemyRow != 0;
+            if (g_CurrentAction->actorId < START_ENEMY) {
+                targetParty ^= 1;
+            }
+
+            if (g_CurrentAction->cmdIndex != CMD_SUMMON && g_CurrentAction->cmdIndex != CMD_LIMIT) {
+                if (g_BattleState.combatant[g_CurrentAction->actorId].status & (STATUS_CONFU | STATUS_MANIPULATE)) {
+                    targetParty ^= 1;
+                }
+
+                if (g_BattleState.combatant[g_CurrentAction->actorId].status & STATUS_CONFU) {
+                    isConfused = 1;
+                }
+            }
+
+            if ((targetFlags & (TARGET_MULTIPLE_DEFAULT | TARGET_TOGGLE_MULTIPLE)) == TARGET_MULTIPLE_DEFAULT) {
+                targetMultiple = 1;
+            }
+
+            if (g_CurrentAction->unkAC != 0) {
+                targetMultiple = 1;
+                targetFlags |= TARGET_MULTIPLE_DEFAULT;
+            }
+
+            targetTeamMask = targetParty ? 0xF : 0x3F0;
+
+            if (isConfused) {
+                g_CurrentAction->allowedTargetsMask = targetTeamMask;
+                if (!(g_CurrentAction->unk90 & 0x200)) {
+                    g_CurrentAction->allowedTargetsMask = SysSelectRandomBit(targetTeamMask);
+                }
+            }
+
+            if (targetFlags & TARGET_ONE_ROW_ONLY) {
+                validTargets &= targetTeamMask;
+            } else if (targetFlags & TARGET_SHORT_RANGE) {
+                validTargets &= g_BattleData.unk150;
+            }
+
+            g_CurrentAction->allowedTargetsMask &= validTargets;
+            targetTeamMask &= validTargets;
+
+            if (!(g_CurrentAction->unk90 & 0x200000)) {
+                if ((g_CurrentAction->allowedTargetsMask && (SysCountActiveBits(g_CurrentAction->unk94) >= 2)) ||
+                    targetMultiple) {
+                    if (g_CurrentAction->allowedTargetsMask & 0xF) {
+                        validTargets &= 0xF;
+                    } else {
+                        validTargets &= 0x3F0;
+                    }
+
+                    if (!(g_CurrentAction->allowedTargetsMask & g_BattleData.unitZoneMask[0])) {
+                        validTargets &= ~g_BattleData.unitZoneMask[0];
+                    }
+                    if (!(g_CurrentAction->allowedTargetsMask & g_BattleData.unitZoneMask[2])) {
+                        validTargets &= ~g_BattleData.unitZoneMask[2];
+                    }
+                    g_CurrentAction->allowedTargetsMask = validTargets;
+                }
+
+                if (g_CurrentAction->allowedTargetsMask == 0) {
+                    if (targetFlags & TARGET_MULTIPLE_DEFAULT) {
+                        if ((targetFlags & TARGET_TOGGLE_MULTIPLE) && !(g_CurrentAction->unk90 & 0x200)) {
+                            targetTeamMask = SysSelectRandomBit(targetTeamMask);
+                        }
+                    }
+                    g_CurrentAction->allowedTargetsMask = targetTeamMask;
+                }
+
+                if (!(targetFlags & TARGET_MULTIPLE_DEFAULT) || ((g_CurrentAction->unk90 & 0x100200) == 0x100200)) {
+                    g_CurrentAction->allowedTargetsMask = SysSelectRandomBit(g_CurrentAction->allowedTargetsMask);
+                }
+            }
+
+            // Restrict targets to either side in the case of a pincer/side attack
+            if ((g_CurrentAction->allowedTargetsMask & g_BattleData.unitZoneMask[0]) &&
+                (g_CurrentAction->allowedTargetsMask & g_BattleData.unitZoneMask[2])) {
+                s32 zoneIndex = SysGetRandomByteFromTable() & 2; // 0 or 2
+                g_CurrentAction->allowedTargetsMask &= g_BattleData.unitZoneMask[zoneIndex];
+                g_CurrentAction->unkEC &= g_BattleData.unitZoneMask[zoneIndex];
+            }
+        }
+    }
+
+    if (g_CurrentAction->unk94 == 0) {
+        g_CurrentAction->unk94 = g_CurrentAction->allowedTargetsMask;
+    }
+}
 
 extern s32 D_800F499C;
 extern s32 D_800F49F8[][10];
@@ -3825,7 +4112,7 @@ static s32 BattleScriptCollapseVarBank(s32 arg0) {
 
 INCLUDE_ASM("asm/us/battle/nonmatchings/battle", BattleOpcodeCycle);
 
-void BattleInitScriptContext(s32 arg0, s32 arg1, s32 arg2) {
+void BattleInitScriptContext(s32 arg0, s32 priority, s32 arg2) {
     s32 opponentAliveMask;
     s32 opponentDeadMask;
     s32 allyAliveMask;
@@ -3834,7 +4121,7 @@ void BattleInitScriptContext(s32 arg0, s32 arg1, s32 arg2) {
     s32 activeAllies;
     s32 swapTmp;
 
-    D_800F4AC8 = arg1;
+    g_BattleScriptActionPriority = priority;
     D_800F4ACC = arg2;
 
     if (arg0 < 0) {
@@ -3892,7 +4179,7 @@ static void BattleQueueOpcodeAction(s16 unitId, s16 actionType, s16 attackIndex)
 
     mask = g_BattleState.scriptOpponentNonPetrifiedMask;
     g_BattleState.combatant[unitId].attackMask = mask;
-    action.priority = D_800F4AC8;
+    action.priority = g_BattleScriptActionPriority;
     action.unitID = unitId;
     action.actionType = actionType;
     action.attackIndex = attackIndex;
